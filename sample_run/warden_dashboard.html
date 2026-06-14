@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><title>PR Warden drift dashboard</title>
+<style>body{background:#010409;color:#e6edf3;font:14px/1.5 -apple-system,Segoe UI,sans-serif;max-width:860px;margin:32px auto;padding:0 16px}
+h1{font-size:20px} table{width:100%;border-collapse:collapse;margin-top:16px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #21262d;font-size:13px}
+th{color:#8b949e;font-weight:600}</style></head><body>
+<h1>CDLO — drift history (6 verdicts)</h1>
+<p style="color:#8b949e">Ticket-Drift Score per PR verdict against the gate thresholds. The story to watch is the trend: scores climbing toward the halt line mean the work is decoupling from declared intent even while individual changes still pass.</p>
+<svg viewBox="0 0 720 200" style="width:100%;max-width:720px;background:#0d1117;border:1px solid #30363d;border-radius:8px">
+<line x1="30" y1="121" x2="690" y2="121" stroke="#d29922" stroke-dasharray="6 4"/>
+<text x="692" y="121" fill="#d29922" font-size="11" dominant-baseline="middle">RE-ANCHOR 0.35</text>
+<line x1="30" y1="93" x2="690" y2="93" stroke="#f85149" stroke-dasharray="6 4"/>
+<text x="692" y="93" fill="#f85149" font-size="11" dominant-baseline="middle">BLOCK 0.55</text>
+<polyline points="30,170 162,170 294,156 426,107 558,79 690,30" fill="none" stroke="#8b949e" stroke-width="2"/><circle cx="30" cy="170" r="5" fill="#3fb950"><title>#87 — CDS None</title></circle><circle cx="162" cy="170" r="5" fill="#58a6ff"><title>#91 — CDS None</title></circle><circle cx="294" cy="156" r="5" fill="#3fb950"><title>#93 — CDS None</title></circle><circle cx="426" cy="107" r="5" fill="#d29922"><title>#95 — CDS None</title></circle><circle cx="558" cy="79" r="5" fill="#f85149"><title>#102 — CDS None</title></circle><circle cx="690" cy="30" r="5" fill="#8b949e"><title>#103,#104 — CDS None</title></circle>
+</svg>
+<table><tr><th>Timestamp</th><th>Target</th><th>BIS</th><th>TDS</th><th>Directive</th><th>Routing</th></tr><tr><td>2026-06-12T01:00:00Z</td><td>#103,#104</td><td>—</td><td>—</td><td style="color:#8b949e;font-weight:600">ESCALATION: COORDINATED DUPLICATE SUBMISSION — HUMAN REVIEW REQUIRED</td><td style="color:#8b949e"></td></tr><tr><td>2026-06-11T16:05:00Z</td><td>#102</td><td>1.0</td><td>0.65</td><td style="color:#f85149;font-weight:600">BLOCK</td><td style="color:#8b949e"></td></tr><tr><td>2026-06-10T11:31:00Z</td><td>#95</td><td>1.0</td><td>0.45</td><td style="color:#d29922;font-weight:600">RE-ANCHOR</td><td style="color:#8b949e"></td></tr><tr><td>2026-06-09T15:12:00Z</td><td>#93</td><td>0.95</td><td>0.1</td><td style="color:#3fb950;font-weight:600">PASS</td><td style="color:#8b949e"></td></tr><tr><td>2026-06-09T09:40:00Z</td><td>#91</td><td>0.5</td><td>0.0</td><td style="color:#58a6ff;font-weight:600">NEEDS-PROVENANCE</td><td style="color:#8b949e"></td></tr><tr><td>2026-06-08T10:02:00Z</td><td>#87</td><td>1.0</td><td>0.0</td><td style="color:#3fb950;font-weight:600">PASS</td><td style="color:#8b949e"></td></tr></table>
+</body></html>

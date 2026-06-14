@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR Warden — live demo</title>
+<style>
+  :root { --bg:#010409; --panel:#0d1117; --line:#21262d; --txt:#e6edf3; --dim:#8b949e;
+          --pass:#3fb950; --warn:#d29922; --info:#58a6ff; --block:#f85149; }
+  body{background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,Segoe UI,sans-serif;max-width:980px;margin:24px auto;padding:0 16px}
+  h1{font-size:20px;margin-bottom:4px} .sub{color:var(--dim);margin-bottom:16px}
+  fieldset{border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:14px;padding:12px 14px}
+  legend{padding:0 6px;color:var(--dim);font-weight:600}
+  label{display:block;font-size:12px;color:var(--dim);margin:8px 0 2px}
+  input[type=text],textarea{width:100%;box-sizing:border-box;background:#010409;border:1px solid var(--line);border-radius:6px;color:var(--txt);padding:6px 8px;font:13px/1.4 ui-monospace,monospace}
+  textarea{resize:vertical}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  button{background:#1f6feb;border:0;border-radius:6px;color:#fff;padding:9px 16px;font-weight:600;cursor:pointer}
+  button.preset{background:#21262d;color:var(--txt);font-weight:400;padding:6px 10px;font-size:12px}
+  .presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  #verdict{display:none;border-radius:8px;padding:14px 16px;margin:16px 0;border:1px solid var(--line)}
+  #verdict h2{margin:0 0 6px;font-size:16px}
+  .score{display:inline-block;margin-right:18px;color:var(--dim)} .score b{color:var(--txt)}
+  #log{background:#010409;border:1px solid var(--line);border-radius:6px;padding:10px 12px;font:12px/1.6 ui-monospace,monospace;white-space:pre-wrap;color:var(--dim)}
+  .fired{color:var(--block)} .clean{color:var(--pass)}
+  .note{color:var(--dim);font-size:12px;margin-top:14px}
+  .chk{font-size:13px;color:var(--txt)} .chk input{margin-right:6px}
+</style>
+</head>
+<body>
+<h1>PR Warden — live demo</h1>
+<div class="sub">The gate itself, running in your browser. Every rule below is the same boolean test written in <code>rules.md</code>, implemented in ~150 lines of plain JavaScript — no AI, no server, no key. Fill the fields or load a preset, then Run.</div>
+
+<div class="presets">
+  <button class="preset" onclick="loadPreset(0)">Preset 1: clean PASS</button>
+  <button class="preset" onclick="loadPreset(1)">Preset 2: NEEDS-PROVENANCE</button>
+  <button class="preset" onclick="loadPreset(2)">Preset 3: silent drift → RE-ANCHOR</button>
+  <button class="preset" onclick="loadPreset(3)">Preset 4: wrong-ticket → BLOCK</button>
+  <button class="preset" onclick="loadPreset(4)">Preset 5: racing agents → ESCALATION</button>
+</div>
+
+<fieldset><legend>Ticket (the baseline)</legend>
+  <div class="row3">
+    <div><label>Ticket ID — format PREFIX-NUMBER (the prefix is what lets the gate spot commits referencing a *different* ticket)</label><input type="text" id="t_id" placeholder="APP-310"></div>
+    <div><label>Assignee (login, optional — blank skips the author≠assignee test)</label><input type="text" id="t_assignee" placeholder="@dev_a"></div>
+    <div><label>Status</label><select id="t_status" style="width:100%;background:#010409;border:1px solid var(--line);border-radius:6px;color:var(--txt);padding:6px 8px;font:13px ui-monospace,monospace"><option>Open</option><option>Closed</option><option>Done</option></select></div>
+  </div>
+  <label>Description — plain text, any length</label><textarea id="t_desc" rows="2" placeholder="Add CSV export to the reports page so analysts can pull data into spreadsheets."></textarea>
+  <label>Acceptance criteria — one per line, in order (the first line is criterion (1), referenced from the PR body by that number)</label><textarea id="t_criteria" rows="3" placeholder="export button on /reports
+CSV matches table columns"></textarea>
+  <label>Declared paths/components — comma separated (leave blank = scope test skipped, never inferred)</label><input type="text" id="t_paths" placeholder="src/reports/, src/shared/csv/">
+</fieldset>
+
+<fieldset><legend>Pull request</legend>
+  <div class="row3">
+    <div><label>PR number</label><input type="text" id="p_num" placeholder="#87"></div>
+    <div><label>Author (login)</label><input type="text" id="p_author" placeholder="@dev_a"></div>
+    <div><label class="chk" style="margin-top:22px"><input type="checkbox" id="p_draft">Draft PR</label></div>
+  </div>
+  <label>PR title</label><input type="text" id="p_title" placeholder="APP-310: CSV export for reports">
+  <label>PR body — under 50 characters trips the thin-body rule; reference criteria by number, e.g. "(1)"</label><textarea id="p_body" rows="3" placeholder="Implements APP-310. Criterion (1): export button added to /reports toolbar. Criterion (2): CSV columns generated from the table schema."></textarea>
+  <label>Commit messages — one per line (under 10 characters counts as a junk commit)</label><textarea id="p_commits" rows="3" placeholder="APP-310: add export button
+APP-310: csv serializer"></textarea>
+  <label>Changed files — one per line, full repo-relative paths</label><textarea id="p_files" rows="3" placeholder="src/reports/Export.tsx
+src/reports/csv.ts"></textarea>
+  <label>New dependencies added — package names, comma separated (blank = none)</label><input type="text" id="p_deps" placeholder="redis, lodash">
+</fieldset>
+
+<fieldset><legend>Second open PR against the same ticket (optional — escalation Trigger 1)</legend>
+  <div class="row">
+    <div><label>PR number / author</label><input type="text" id="q_meta" placeholder="#104 @agent_9"></div>
+    <div><label>Title (trigger fires only if EXACTLY identical to the main PR's title)</label><input type="text" id="q_title" placeholder="APP-315: implement webhook retry"></div>
+  </div>
+  <label>Changed files — one per line (trigger fires only if the file list is identical too)</label><textarea id="q_files" rows="2" placeholder="src/webhooks/retry.ts
+src/webhooks/queue.ts"></textarea>
+</fieldset>
+
+<button onclick="run()">Run the gate</button>
+<button class="preset" style="margin-left:8px" onclick="clearAll()">Clear all fields</button>
+
+<div id="verdict"></div>
+<div id="logwrap" style="display:none"><div style="color:var(--dim);font-size:12px;margin-bottom:4px">EXECUTION LOG — every test, fired or not</div><div id="log"></div></div>
+
+<div class="note">Honest limits, same as the operator's: this demo implements every scorable rule plus escalation Trigger 1. Trigger 2 (a ticket whose criteria contradict each other) requires semantic reading and is the one test that stays with the full operator. Weights and thresholds match <code>config.md</code> defaults; the same numbers are verified by <code>scripts/verify_rules.py</code>.</div>
+
+<script>
+const W = { empty_ticket:.30, thin_pr_body:.20, junk_commit:.10, junk_commit_cap:.30, closed_ticket:.20, draft_pr:.15,
+            no_ticket_ref:.15, unaddressed_criterion:.10, unaddressed_criterion_cap:.30, oos_file:.10, oos_file_cap:.30,
+            undeclared_dep:.10, undeclared_dep_cap:.20, foreign_ticket_commit:.15, foreign_ticket_cap:.30, author_not_assignee:.10,
+            reanchor:.35, block:.55, floor:.70 };
+const V = id => document.getElementById(id).value.trim();
+const LINES = id => V(id).split("\n").map(s=>s.trim()).filter(Boolean);
+
+function run(){
+  const L = [];
+  const log = (label, fired, detail) => L.push((fired?'FIRED    ':'NOT FIRED') + '  ' + label + ' — ' + detail);
+  const ticketId = V('t_id');
+
+  // STEP 1 — escalation Trigger 1
+  L.push('— STEP 1 ESCALATION AUDIT —');
+  const qTitle = V('q_title'), qFiles = LINES('q_files').sort().join('|'), pFiles = LINES('p_files');
+  const dup = qTitle && qTitle === V('p_title') && qFiles === [...pFiles].sort().join('|') && qFiles.length>0;
+  log('Trigger 1 (duplicate-agent submission)', dup, dup ? 'same ticket + identical title + identical file list' : 'conditions not all satisfied');
+  if (dup) return render('ESCALATION', null, null, L, 'COORDINATED DUPLICATE SUBMISSION — HUMAN REVIEW REQUIRED. PRs ' + V('p_num') + ' and ' + V('q_meta') + '. No scoring performed; merging either compounds the collision.');
+
+  // STEP 2 — baseline presence
+  L.push('— STEP 2 BASELINE PRESENCE —');
+  if (!ticketId) return render('BLOCK', null, null, L, 'No ticket ID — no baseline to measure against.');
+  L.push('Ticket ID ' + ticketId + ' present. Continue.');
+
+  // STEP 3 — BIS
+  L.push('— STEP 3 BIS (start 1.00) —');
+  let bis = 1.00;
+  const criteria = LINES('t_criteria');
+  const b1 = !V('t_desc') && criteria.length===0;
+  if (b1) bis -= W.empty_ticket; log('B1 empty ticket (no description AND no criteria)', b1, b1?'-0.30':'description or criteria present');
+  const b2 = V('p_body').length < 50;
+  if (b2) bis -= W.thin_pr_body; log('B2 PR body < 50 chars', b2, V('p_body').length + ' chars');
+  const commits = LINES('p_commits');
+  const junk = commits.filter(c=>c.length<10).length;
+  const b3 = Math.min(junk*W.junk_commit, W.junk_commit_cap);
+  bis -= b3; log('B3 junk commits (<10 chars)', junk>0, junk + ' of ' + commits.length + ' → −' + b3.toFixed(2) + (junk*W.junk_commit>W.junk_commit_cap?' (cap held)':''));
+  const b4 = ['closed','done'].includes(V('t_status').toLowerCase());
+  if (b4) bis -= W.closed_ticket; log('B4 ticket already Closed/Done', b4, V('t_status'));
+  const b5 = document.getElementById('p_draft').checked;
+  if (b5) bis -= W.draft_pr; log('B5 draft PR requesting verdict', b5, b5?'-0.15':'not draft');
+  bis = Math.round(bis*100)/100;
+  L.push('Final BIS = ' + bis.toFixed(2));
+
+  // STEP 4 — TDS
+  L.push('— STEP 4 TDS (start 0.00) —');
+  let tds = 0;
+  const hay = (V('p_title')+' '+V('p_body')+' '+commits.join(' '));
+  const d1 = !hay.includes(ticketId);
+  if (d1) tds += W.no_ticket_ref; log('D1 ticket ID absent from title+body+commits', d1, d1?'+0.15':'referenced');
+  let unaddressed = 0;
+  criteria.forEach((c,i)=>{ const n='('+(i+1)+')'; if(!(V('p_body').includes(n) || V('p_body').toLowerCase().includes(c.toLowerCase().slice(0,30)))) unaddressed++; });
+  const d2 = Math.min(unaddressed*W.unaddressed_criterion, W.unaddressed_criterion_cap);
+  tds += d2; log('D2 unaddressed criteria', unaddressed>0, unaddressed + ' of ' + criteria.length + ' → +' + d2.toFixed(2));
+  const paths = V('t_paths') ? V('t_paths').split(',').map(s=>s.trim()).filter(Boolean) : [];
+  let oos = 0;
+  if (paths.length===0) { log('D3 out-of-scope files', false, 'SKIPPED — ticket declares no paths; scope is never inferred'); }
+  else { oos = pFiles.filter(f=>!paths.some(p=>f.startsWith(p))).length;
+    const d3 = Math.min(oos*W.oos_file, W.oos_file_cap); tds += d3;
+    log('D3 out-of-scope files', oos>0, oos + ' of ' + pFiles.length + ' outside [' + paths.join(', ') + '] → +' + d3.toFixed(2)); }
+  const deps = V('p_deps') ? V('p_deps').split(',').map(s=>s.trim()).filter(Boolean) : [];
+  const tHay = (V('t_desc')+' '+criteria.join(' ')).toLowerCase();
+  const undeclared = deps.filter(d=>!tHay.includes(d.toLowerCase())).length;
+  const d4 = Math.min(undeclared*W.undeclared_dep, W.undeclared_dep_cap);
+  tds += d4; log('D4 undeclared new dependencies', undeclared>0, undeclared + ' of ' + deps.length + ' → +' + d4.toFixed(2));
+  const prefix = ticketId.match(/^[A-Za-z]+-/) ? ticketId.split('-')[0]+'-' : null;
+  let foreign = 0;
+  if (prefix) commits.forEach(c=>{ const m=c.match(new RegExp(prefix+'\\d+','g')); if(m && m.some(x=>x!==ticketId)) foreign++; });
+  const d5 = Math.min(foreign*W.foreign_ticket_commit, W.foreign_ticket_cap);
+  tds += d5; log('D5 commits referencing a different ticket', foreign>0, foreign + ' commit(s) → +' + d5.toFixed(2));
+  const assignee = V('t_assignee');
+  const d6 = assignee && V('p_author') && assignee.replace('@','') !== V('p_author').replace('@','');
+  if (assignee==='') log('D6 author ≠ assignee', false, 'SKIPPED — no assignee on ticket');
+  else { if (d6) tds += W.author_not_assignee; log('D6 author ≠ assignee', !!d6, V('p_author') + ' vs ' + assignee); }
+  tds = Math.min(Math.round(tds*100)/100, 1.00);
+  L.push('Final TDS = ' + tds.toFixed(2));
+
+  // STEP 5 — precedence
+  L.push('— STEP 5 PRECEDENCE —');
+  let directive, why;
+  if (tds > W.block) { directive='BLOCK'; why='TDS ' + tds.toFixed(2) + ' > ' + W.block; }
+  else if (bis < W.floor) { directive='NEEDS-PROVENANCE'; why='BIS ' + bis.toFixed(2) + ' < ' + W.floor + ' floor' + (tds<=W.reanchor?' (zero/low drift — the work may be on-ticket, the paper trail is not auditable)':''); }
+  else if (tds > W.reanchor) { directive='RE-ANCHOR'; why='TDS ' + tds.toFixed(2) + ' in (' + W.reanchor + ', ' + W.block + '] band'; }
+  else { directive='PASS'; why='TDS ' + tds.toFixed(2) + ' ≤ ' + W.reanchor + ' and BIS ' + bis.toFixed(2) + ' ≥ ' + W.floor; }
+  L.push(why + ' → ' + directive);
+  render(directive, bis, tds, L);
+}
+
+function render(directive, bis, tds, L, extra){
+  const colors = {PASS:'var(--pass)','RE-ANCHOR':'var(--warn)','NEEDS-PROVENANCE':'var(--info)',BLOCK:'var(--block)',ESCALATION:'var(--block)'};
+  const gh = {PASS:'success check','RE-ANCHOR':'neutral + comment + label drift:re-anchor','NEEDS-PROVENANCE':'neutral + comment',BLOCK:'failure check',ESCALATION:'failure on all PRs — human review'};
+  const v = document.getElementById('verdict');
+  v.style.display='block'; v.style.borderColor = colors[directive];
+  v.innerHTML = '<h2 style="color:'+colors[directive]+'">'+directive+'</h2>'
+    + (bis!==null ? '<span class="score">BIS <b>'+bis.toFixed(2)+'</b> (floor 0.70)</span><span class="score">TDS <b>'+tds.toFixed(2)+'</b> (re-anchor 0.35 / block 0.55)</span>' : '<span class="score">not scored — short-circuit</span>')
+    + '<div style="margin-top:6px;color:var(--dim)">GitHub check state: '+gh[directive]+'</div>'
+    + (extra ? '<div style="margin-top:6px">'+extra+'</div>' : '');
+  document.getElementById('logwrap').style.display='block';
+  document.getElementById('log').innerHTML = L.map(l=>l.startsWith('FIRED')?'<span class="fired">'+l+'</span>':(l.startsWith('NOT FIRED')?'<span class="clean">'+l+'</span>':'<b>'+l+'</b>')).join('\n');
+}
+
+const P = [
+ {t_id:'APP-310',t_assignee:'@dev_a',t_status:'Open',t_desc:'Add CSV export to reports page.',t_criteria:'export button on /reports\nCSV matches table columns',t_paths:'src/reports/',p_num:'#87',p_author:'@dev_a',p_title:'APP-310: CSV export for reports',p_body:'Implements APP-310. Criterion (1): export button added to /reports toolbar. Criterion (2): CSV columns generated from the table schema so they always match.',p_commits:'APP-310: add export button\nAPP-310: csv serializer',p_files:'src/reports/Export.tsx\nsrc/reports/csv.ts',p_deps:'',q_meta:'',q_title:'',q_files:'',draft:false},
+ {t_id:'APP-311',t_assignee:'@dev_b',t_status:'Open',t_desc:'Fix session timeout on auth refresh.',t_criteria:'session persists through token refresh',t_paths:'src/auth/',p_num:'#91',p_author:'@dev_b',p_title:'APP-311: session fix',p_body:'fixes it',p_commits:'wip\nfix\nmore',p_files:'src/auth/session.ts',p_deps:'',q_meta:'',q_title:'',q_files:'',draft:false},
+ {t_id:'APP-312',t_assignee:'@agent_4',t_status:'Open',t_desc:'Optimize report query performance.',t_criteria:'p95 under 800ms',t_paths:'src/reports/',p_num:'#95',p_author:'@agent_4',p_title:'Performance improvements',p_body:'Adds a caching layer for report queries. p95 measured at 410ms after warm cache, satisfying the sub-800ms criterion (1). Cache invalidation on report schema change.',p_commits:'add cache layer\nwire cache into query path',p_files:'src/reports/query.ts\ninfra/cache/layer.ts\ninfra/cache/config.ts',p_deps:'redis',q_meta:'',q_title:'',q_files:'',draft:false},
+ {t_id:'APP-313',t_assignee:'@dev_c',t_status:'Open',t_desc:'Update onboarding email copy.',t_criteria:'new copy per attached doc',t_paths:'src/email/',p_num:'#102',p_author:'@agent_7',p_title:'misc fixes',p_body:'Cleanup pass: resolves the lingering retry issue from APP-309 and starts the APP-314 refactor while I was in the area.',p_commits:'APP-309: retry backoff\nAPP-314: extract mailer interface',p_files:'src/email/mailer.ts\nsrc/email/retry.ts',p_deps:'',q_meta:'',q_title:'',q_files:'',draft:false},
+ {t_id:'APP-315',t_assignee:'@engineering_lead',t_status:'Open',t_desc:'Implement webhook retry.',t_criteria:'',t_paths:'src/webhooks/',p_num:'#103',p_author:'@agent_8',p_title:'APP-315: implement webhook retry',p_body:'Implements webhook retry per APP-315.',p_commits:'APP-315: retry queue',p_files:'src/webhooks/retry.ts\nsrc/webhooks/queue.ts',p_deps:'',q_meta:'#104 @agent_9',q_title:'APP-315: implement webhook retry',q_files:'src/webhooks/retry.ts\nsrc/webhooks/queue.ts',draft:false}
+];
+function clearAll(){ document.querySelectorAll('input[type=text],textarea').forEach(el=>el.value=''); document.getElementById('t_status').selectedIndex=0; document.getElementById('p_draft').checked=false; document.getElementById('verdict').style.display='none'; document.getElementById('logwrap').style.display='none'; }
+function loadPreset(i){ const p=P[i]; for(const k in p){ if(k==='draft'){document.getElementById('p_draft').checked=p[k];continue;} const el=document.getElementById(k); if(el) el.value=p[k]; } document.getElementById('verdict').style.display='none'; document.getElementById('logwrap').style.display='none'; }
+</script>
+</body>
+</html>

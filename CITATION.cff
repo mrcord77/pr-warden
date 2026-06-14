@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite the technical report below."
+title: "PR Warden"
+authors:
+  - family-names: Cordero
+    given-names: Andre
+license: AGPL-3.0
+repository-code: "https://github.com/mrcord77/pr-warden"
+preferred-citation:
+  type: report
+  title: "One Gate, Aimed Twice: A Reusable Pattern for Deterministic AI Governance"
+  authors:
+    - family-names: Cordero
+      given-names: Andre
+  year: 2026
+  doi: 10.5281/zenodo.20673314
+  url: "https://doi.org/10.5281/zenodo.20673314"

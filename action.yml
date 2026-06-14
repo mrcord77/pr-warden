@@ -1,0 +1,68 @@
+# PR Warden — reusable composite Action
+# One-block install in any repo's workflow:
+#
+#   name: pr-warden
+#   on:
+#     pull_request:
+#       types: [opened, edited, synchronize, ready_for_review]
+#   permissions:
+#     pull-requests: write
+#     issues: read
+#   jobs:
+#     warden:
+#       runs-on: ubuntu-latest
+#       steps:
+#         - uses: mrcord77/pr-warden@master
+#
+# No API key, no secrets, no vendored files: the gate's deterministic Python engine
+# runs from this action's own checkout. Ticket = the GitHub Issue linked from the PR
+# body ("Closes #N"); issue format in reference/ticket_convention.md.
+name: "PR Warden"
+description: "Deterministic PR-vs-ticket drift gate. Four verdicts, boolean-test scoring, no AI, no API key."
+branding:
+  icon: "shield"
+  color: "blue"
+runs:
+  using: "composite"
+  steps:
+    - name: Extract payload (PR + linked issue)
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        python3 "${{ github.action_path }}/scripts/extract_pr_payload.py" \
+          --repo "${{ github.repository }}" \
+          --pr "${{ github.event.pull_request.number }}" \
+          --json > /tmp/warden_payload.json
+    - name: Run the gate (deterministic — no AI)
+      id: gate
+      shell: bash
+      run: |
+        set +e
+        python3 "${{ github.action_path }}/scripts/run_gate.py" /tmp/warden_payload.json --markdown > /tmp/warden_verdict.md
+        echo "code=$?" >> "$GITHUB_OUTPUT"
+        set -e
+    - name: Post verdict comment
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh pr comment "${{ github.event.pull_request.number }}" \
+          --repo "${{ github.repository }}" --body-file /tmp/warden_verdict.md || true
+    - name: Apply re-anchor label
+      if: steps.gate.outputs.code == '78'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh pr edit "${{ github.event.pull_request.number }}" \
+          --repo "${{ github.repository }}" --add-label "drift:re-anchor" || true
+    - name: Resolve check state
+      shell: bash
+      run: |
+        c="${{ steps.gate.outputs.code }}"
+        case "$c" in
+          0)     echo "PASS — success" ;;
+          78|75) echo "RE-ANCHOR / NEEDS-PROVENANCE — neutral (commented, not blocking)" ;;
+          *)     echo "BLOCK / ESCALATION — failing the check"; exit 1 ;;
+        esac

@@ -1,0 +1,2 @@
+# Sample run
+What the Warden leaves behind across a few days of gating: `verdict_log.jsonl` (one line per verdict, append-only) and `warden_dashboard.html` (open in a browser — drift trend per PR against the RE-ANCHOR/BLOCK lines, full history). The arc: clean pass → provenance bounce and its fixed resubmission → a re-anchor → a block → two agents racing one ticket. Regenerate any time: `python scripts/build_warden_dashboard.py --log sample_run/verdict_log.jsonl --out sample_run/warden_dashboard.html`.

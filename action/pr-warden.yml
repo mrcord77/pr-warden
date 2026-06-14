@@ -1,0 +1,54 @@
+# PR Warden — GitHub Action (deterministic, complete)
+# Runs the gate on every PR against its linked GitHub Issue (per
+# reference/ticket_convention.md: "Closes #N" in the PR body links the ticket).
+# No AI, no API key: scoring runs entirely in scripts/run_gate.py.
+# Verdict posts as a PR comment; the check state comes from the engine's exit code:
+#   0 PASS -> success | 78 RE-ANCHOR, 75 NEEDS-PROVENANCE -> neutral | 1 BLOCK, 2 ESCALATION -> failure
+#
+# Install: copy the prwarden folder into your repo (or vendor scripts/ + config.md),
+# put this file at .github/workflows/pr-warden.yml. That's the whole install.
+name: pr-warden
+on:
+  pull_request:
+    types: [opened, edited, synchronize, ready_for_review]
+permissions:
+  pull-requests: write
+  issues: read
+jobs:
+  warden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract payload (PR + linked issue)
+        id: extract
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          python3 scripts/extract_pr_payload.py \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --json > payload.json
+      - name: Run the gate (deterministic — no AI)
+        id: gate
+        continue-on-error: true
+        run: |
+          python3 scripts/run_gate.py payload.json --markdown > verdict.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Capture exit code
+        id: code
+        run: |
+          python3 scripts/run_gate.py payload.json > /dev/null && echo "code=0" >> "$GITHUB_OUTPUT" || echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Post verdict comment
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file verdict.md
+      - name: Apply re-anchor label
+        if: steps.code.outputs.code == '78'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh pr edit "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --add-label "drift:re-anchor" || true
+      - name: Resolve check state
+        run: |
+          c="${{ steps.code.outputs.code }}"
+          case "$c" in
+            0)  echo "PASS — success"; exit 0 ;;
+            78|75) echo "RE-ANCHOR / NEEDS-PROVENANCE — neutral (commented, not blocking)"; exit 0 ;;
+            *)  echo "BLOCK / ESCALATION — failing the check"; exit 1 ;;
+          esac
